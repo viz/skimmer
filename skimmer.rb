@@ -10,6 +10,8 @@ class Skimmer
   def configure
     @@logger = Logger.new(STDERR)
     @@logger.level = Logger::INFO
+    @neo = Neography::Rest.new
+
 
     Neography.configure do |config|
       config.protocol           = "http://"
@@ -29,6 +31,24 @@ class Skimmer
     end
   end
 
+  def add_users_to_graph
+
+    (2000000..5000000).each do |id|
+      unless (user = get_user_from_API(id)).nil? then
+        #        @@logger.info("Found user: " + user )
+        graph_user = add_user_to_graph(user)
+        add_cards_to_graph(graph_user)
+      else
+        @@logger.info("No user for id: " + id.to_s )
+      end
+    end
+  end
+
+
+
+
+
+
   def get_user_from_API(user_id)
     uri = URI.parse("https://betatest.booodl.com/api/profiles/" + user_id.to_s)
     res = api_request(:get, uri, nil)
@@ -42,11 +62,10 @@ class Skimmer
   end
 
   def add_user_to_graph(user)
-    @neo = Neography::Rest.new
     ud = JSON.parse(user,{:symbolize_names => true})
     @@logger.info("User: " + ud[:id].to_s + " exists")
     if (res = Neography::Node.find("user_index", "id", ud[:id].to_s)).nil? then
-    @@logger.info("User: " + ud[:id].to_s + " not in graph - adding to graph")
+      @@logger.info("User: " + ud[:id].to_s + " not in graph - adding to graph")
       user_node = Neography::Node.create( "id" => ud[:id],
                                           "username" => ud[:username],
                                           "display_name" => ud[:display_name],
@@ -58,34 +77,82 @@ class Skimmer
                                           )
       user_node.add_to_index("user_index", "id", ud[:id])
       @neo.add_label(user_node, "User")
+
+      user_node
+    else
+      res
     end
 
   end
 
-  def add_users_to_graph
+  def get_users_from_graph
+    @neo.get_nodes_labeled("User")
+  end
 
-    (2000000..5000000).each do |id|
-      unless (user = get_user_from_API(id)).nil? then
-        #        @@logger.info("Found user: " + user )
-        add_user_to_graph(user)
-      else
-        @@logger.info("No user for id: " + id.to_s )
-      end
+  def get_cards_from_API(user_id)
+    @@logger.info("Getting cards for user: " + user_id.to_s )
+    uri = URI.parse("https://betatest.booodl.com/api/items/" + user_id.to_s)
+    res = api_request(:get, uri, nil)
+
+    case res
+    when Net::HTTPSuccess
+      res.body
+    else
+      nil
     end
 
-    def get_cards_from_API
+  end
 
+  def add_card_to_graph(card)
+    @@logger.info("Adding card to graph: " + card.to_s)
+
+    @@logger.info("Card: " + card[:id].to_s + " found")
+    if (res = Neography::Node.find("card_index", "id", card[:id].to_s)).nil? then
+      @@logger.info("Card: " + card[:id].to_s + " not in graph - adding to graph")
+      card_node = Neography::Node.create( "id" => card[:id],
+                                          "status" => card[:status],
+                                          "description" => card[:description],
+                                          "price" => card[:price],
+                                          "price_currency" => card[:price_currency],
+                                          "owner_id" => card[:owner_id],
+                                          "original_owner_id" => card[:original_owner_id],
+                                          "owner_comment" => card[:owner_comment],
+                                          "title" => card[:title],
+                                          "source_link" => card[:source_link]
+                                          )
+      card_node.add_to_index("card_index", "id", card[:id])
+      @neo.add_label(card_node, "Card")
+      card_node
+    else
+      res
     end
+  end
 
-    def add_cards_to_graph
-      get_users_from_graph.each do |user|
-        get_cards_from_API(user).each do |card|
-          add_card_to_graph
+  def add_cards_to_graph
+    get_users_from_graph.each do |user|
+      @@logger.info("Retrieved user: " + user["data"]["id"].to_s )
+      cards = JSON.parse(get_cards_from_API(user["data"]["id"]),{:symbolize_names => true})[:items]
+      unless cards.empty? then
+        cards.each do |card|
+          add_card_to_graph(card)
         end
       end
     end
-
   end
+
+  def add_cards_to_graph(user)
+    @@logger.info("Retrieved user: " + user.to_s )
+    cards = JSON.parse(get_cards_from_API(user.id),{:symbolize_names => true})[:items]
+    unless cards.empty? then
+      cards.each do |card|
+        graph_card = add_card_to_graph(card)
+        @@logger.info("Card node: " + graph_card.to_s + " is a " + graph_card.class.to_s )
+        @@logger.info("User node: " + user.to_s + " is a " + user.class.to_s )
+        @neo.create_relationship("collected", user, graph_card)
+      end
+    end
+  end
+
 
   def api_request(method, uri, body)
 
