@@ -34,16 +34,31 @@ class Skimmer
     res = api_request(:get, uri, nil)
 
     case res
-      when Net::HTTPSuccess  
-        res.body
-      else
-        nil    
-      end
+    when Net::HTTPSuccess
+      res.body
+    else
+      nil
+    end
   end
 
   def add_user_to_graph(user)
-        @@logger.info("User: " + JSON.parse(user,{:symbolize_names => true})[:id].to_s + " exists - adding to graph")
-
+    @neo = Neography::Rest.new
+    ud = JSON.parse(user,{:symbolize_names => true})
+    @@logger.info("User: " + ud[:id].to_s + " exists")
+    if (res = Neography::Node.find("user_index", "id", ud[:id].to_s)).nil? then
+    @@logger.info("User: " + ud[:id].to_s + " not in graph - adding to graph")
+      user_node = Neography::Node.create( "id" => ud[:id],
+                                          "username" => ud[:username],
+                                          "display_name" => ud[:display_name],
+                                          "profile_photo_s3id" => ud[:profile_photo_s3id],
+                                          "bio_statement" => ud[:bio_statement],
+                                          "location" => ud[:location],
+                                          "user_type" => ud[:user_type],
+                                          "mantel_card_id" => ud[:mantel_card]
+                                          )
+      user_node.add_to_index("user_index", "id", ud[:id])
+      @neo.add_label(user_node, "User")
+    end
 
   end
 
@@ -51,10 +66,10 @@ class Skimmer
 
     (2000000..5000000).each do |id|
       unless (user = get_user_from_API(id)).nil? then
-#        @@logger.info("Found user: " + user )
+        #        @@logger.info("Found user: " + user )
         add_user_to_graph(user)
       else
-        @@logger.info("No user for id: " + id.to_s )        
+        @@logger.info("No user for id: " + id.to_s )
       end
     end
 
