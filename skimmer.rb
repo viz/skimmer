@@ -104,11 +104,13 @@ class Skimmer
   end
 
   def add_card_to_graph(card)
-    @@logger.info("Adding card to graph: " + card.to_s)
+#    @@logger.info("Adding card to graph: " + card.to_s)
 
     @@logger.info("Card: " + card[:id].to_s + " found")
     if (res = Neography::Node.find("card_index", "id", card[:id].to_s)).nil? then
       @@logger.info("Card: " + card[:id].to_s + " not in graph - adding to graph")
+      @@logger.info("Card: " + card[:id].to_s + " has original owner: " + card[:original_owner_id].to_s)
+     # need exception handling on create method below
       card_node = Neography::Node.create( "id" => card[:id],
                                           "status" => card[:status],
                                           "description" => card[:description],
@@ -130,7 +132,7 @@ class Skimmer
 
   def add_cards_to_graph
     get_users_from_graph.each do |user|
-      @@logger.info("Retrieved user: " + user["data"]["id"].to_s )
+ #     @@logger.info("Retrieved user: " + user["data"]["id"].to_s )
       cards = JSON.parse(get_cards_from_API(user["data"]["id"]),{:symbolize_names => true})[:items]
       unless cards.empty? then
         cards.each do |card|
@@ -141,13 +143,13 @@ class Skimmer
   end
 
   def add_cards_to_graph(user)
-    @@logger.info("Retrieved user: " + user.to_s )
+#    @@logger.info("Retrieved user: " + user.to_s )
     cards = JSON.parse(get_cards_from_API(user.id),{:symbolize_names => true})[:items]
     unless cards.empty? then
       cards.each do |card|
         graph_card = add_card_to_graph(card)
-        @@logger.info("Card node: " + graph_card.to_s + " is a " + graph_card.class.to_s )
-        @@logger.info("User node: " + user.to_s + " is a " + user.class.to_s )
+#        @@logger.info("Card node: " + graph_card.to_s + " is a " + graph_card.class.to_s )
+#        @@logger.info("User node: " + user.to_s + " is a " + user.class.to_s )
         @neo.create_relationship("collected", user, graph_card)
       end
     end
